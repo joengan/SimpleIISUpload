@@ -1,0 +1,22 @@
+{
+  "compileOnSave": true,
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": [ "DOM", "ESNext" ],
+    "strict": true,
+    "sourceMap": true,
+    "removeComments": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+    /* 這裡完全不要寫 outDir 或 rootDir */
+  },
+  "include": [
+    "Scripts/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "bin",
+    "obj"
+  ]
+}

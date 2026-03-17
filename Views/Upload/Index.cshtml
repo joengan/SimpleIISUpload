@@ -1,0 +1,56 @@
+﻿@{ Layout = null; }
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>檔案上傳</title>
+    <link href="~/Content/Upload/style.css" rel="stylesheet" />
+</head>
+<body>
+    <div class="upload-card" id="uploadCard"
+         data-validate-url="@Url.Action("ValidatePermission", "Upload")"
+         data-init-url="@Url.Action("InitializeUpload", "Upload")"
+         data-upload-chunk-url="@Url.Action("UploadChunk", "Upload")"
+         data-complete-url="@Url.Action("CompleteUpload", "Upload")">
+        <h2>📂 檔案上傳</h2>
+
+        <div class="drop-zone" id="dropZone">
+            <span class="icon">☁️</span>
+            <p>將檔案拖曳至此 或 點擊選取</p>
+            <input type="file" id="fileInput" style="display:none">
+        </div>
+
+        <div class="file-info" id="fileInfo">
+            <div class="info-row">
+                <span class="info-label">準備上傳檔案</span>
+                <span class="info-value" id="filePath">尚未選取檔案</span>
+            </div>
+        </div>
+
+        <div class="upload-progress" id="uploadProgress" hidden>
+            <div class="progress-track">
+                <div class="progress-bar" id="uploadProgressBar"></div>
+            </div>
+            <span class="progress-text" id="uploadProgressText">0%</span>
+        </div>
+
+        <div class="controls">
+            <label>上傳密碼：</label>
+            <input type="password" id="pwd" placeholder="請輸入密碼">
+
+            <div class="modes">
+                <label><input type="radio" name="mode" value="prohibit" checked> 禁止重複</label>
+                <label><input type="radio" name="mode" value="overwrite"> 覆蓋</label>
+                <label><input type="radio" name="mode" value="auto"> 自動編號</label>
+            </div>
+
+            <button id="uploadBtn">確認上傳</button>
+        </div>
+
+        <p id="status"></p>
+    </div>
+
+    <script src="~/Scripts/Upload/script.js" charset="utf-8"></script>
+</body>
+</html>

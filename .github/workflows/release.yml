@@ -1,0 +1,183 @@
+name: Build and Release SimpleIISUpload
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build_release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: 1. 檢出程式碼
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 2. 設定建置工具
+        uses: nuget/setup-nuget@v2
+
+      - name: 2b. 設定 MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: 3. 判斷版本狀態
+        id: check_version
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $workspace = '${{ github.workspace }}'
+          Set-Location $workspace
+
+          $content = git show HEAD:Properties/AssemblyInfo.cs
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($content)) {
+            Write-Error 'Error: Unable to read Properties/AssemblyInfo.cs from git.'
+            exit 1
+          }
+
+          $match = [regex]::Match(($content -join [Environment]::NewLine), '\[assembly:\s*AssemblyFileVersion\("(?<version>[^"]+)"\)\]')
+          if (-not $match.Success) {
+            Write-Error 'Error: AssemblyFileVersion not found in Properties/AssemblyInfo.cs'
+            exit 1
+          }
+
+          $currentVersion = $match.Groups['version'].Value
+          "VERSION=$currentVersion" >> $env:GITHUB_OUTPUT
+
+          gh release view "v$currentVersion" --repo '${{ github.repository }}' *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "IS_NEW_RELEASE=false" >> $env:GITHUB_OUTPUT
+          }
+          else {
+            "IS_NEW_RELEASE=true" >> $env:GITHUB_OUTPUT
+            $global:LASTEXITCODE = 0
+          }
+
+          exit 0
+
+      - name: 4. 還原 NuGet 套件
+        shell: pwsh
+        run: |
+          $workspace = '${{ github.workspace }}'
+          Set-Location $workspace
+
+          $projectPath = Join-Path $workspace 'SimpleIISUpload.csproj'
+          nuget restore $projectPath -SolutionDirectory $workspace
+          if ($LASTEXITCODE -ne 0) {
+            throw 'NuGet restore failed.'
+          }
+
+      - name: 5. 執行發佈與打包
+        id: package
+        shell: pwsh
+        run: |
+          $workspace = '${{ github.workspace }}'
+          Set-Location $workspace
+
+          $version = '${{ steps.check_version.outputs.VERSION }}'
+          $projectPath = Join-Path $workspace 'SimpleIISUpload.csproj'
+          $publishDir = $null
+          $buildTemp = Join-Path $env:RUNNER_TEMP 'simpleiisupload_build_dir'
+          $zipPath = Join-Path $workspace "simpleiisupload-v$version.zip"
+          $tarPath = Join-Path $workspace "simpleiisupload-v$version.tar.gz"
+          $latestZipPath = Join-Path $workspace 'simpleiisupload-latest-test.zip'
+          $latestTarPath = Join-Path $workspace 'simpleiisupload-latest-test.tar.gz'
+          $publishCandidates = @(
+            (Join-Path $workspace 'bin\app.publish'),
+            (Join-Path $workspace 'bin\Release\Publish')
+          )
+
+          foreach ($path in $publishCandidates) {
+            Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          Remove-Item $buildTemp -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $zipPath, $tarPath, $latestZipPath, $latestTarPath -Force -ErrorAction SilentlyContinue
+
+          msbuild $projectPath /p:Configuration=Release /p:DeployOnBuild=true /p:PublishProfile=FolderProfile
+          if ($LASTEXITCODE -ne 0) {
+            throw 'MSBuild publish failed.'
+          }
+
+          foreach ($path in $publishCandidates) {
+            if (Test-Path $path) {
+              $publishDir = $path
+              break
+            }
+          }
+
+          if (-not $publishDir) {
+            Write-Error 'Publish output not found in expected folders.'
+            exit 1
+          }
+
+          New-Item -ItemType Directory -Path $buildTemp | Out-Null
+          Copy-Item -Path (Join-Path $publishDir '*') -Destination $buildTemp -Recurse -Force
+
+          Compress-Archive -Path (Join-Path $buildTemp '*') -DestinationPath $zipPath
+          tar -czf $tarPath -C $buildTemp .
+
+          Copy-Item $zipPath $latestZipPath
+          Copy-Item $tarPath $latestTarPath
+
+      - name: 6. 清理舊標籤
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $global:LASTEXITCODE = 0
+
+          gh release delete latest-test --yes 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'latest-test release does not exist or could not be deleted.'
+            $global:LASTEXITCODE = 0
+          }
+
+          git push --delete origin latest-test 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'latest-test tag does not exist on origin or could not be deleted.'
+            $global:LASTEXITCODE = 0
+          }
+
+          exit 0
+
+      - name: 7a. 發佈正式版本
+        if: steps.check_version.outputs.IS_NEW_RELEASE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.check_version.outputs.VERSION }}
+          name: Release v${{ steps.check_version.outputs.VERSION }}
+          body: |
+            🎉 **正式版本更新**：偵測到線上尚無 v${{ steps.check_version.outputs.VERSION }}，已成功發佈正式版本。
+
+            🎉 **Official Release**: No online release for v${{ steps.check_version.outputs.VERSION }} was found, so an official release has been published.
+          files: |
+            simpleiisupload-v${{ steps.check_version.outputs.VERSION }}.tar.gz
+            simpleiisupload-v${{ steps.check_version.outputs.VERSION }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 7b. 發佈測試版本
+        if: steps.check_version.outputs.IS_NEW_RELEASE == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-test
+          name: Latest Test Build
+          prerelease: true
+          body: |
+            🛠️ **測試版本說明**：線上已存在 v${{ steps.check_version.outputs.VERSION }}，因此本次改發佈為 latest-test 測試版本，不覆蓋正式版。
+
+            🛠️ **Test Build Note**: Release v${{ steps.check_version.outputs.VERSION }} already exists online, so this run publishes latest-test instead of replacing the official release.
+          files: |
+            simpleiisupload-latest-test.tar.gz
+            simpleiisupload-latest-test.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

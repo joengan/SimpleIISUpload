@@ -1,0 +1,123 @@
+﻿.upload-card {
+  max-width: 500px;
+  margin: 3rem auto;
+  padding: 2rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+.upload-card h2 {
+  margin-top: 0;
+  color: #1e293b;
+}
+.upload-card .drop-zone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.upload-card .drop-zone.active {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.05);
+}
+.upload-card .drop-zone .icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+.upload-card .drop-zone p {
+  margin: 0;
+  color: #64748b;
+}
+.upload-card .controls {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.upload-card .controls input[type=password] {
+  padding: 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+}
+.upload-card .controls .modes {
+  font-size: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.upload-card .controls .modes label {
+  cursor: pointer;
+}
+.upload-card .file-info {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.upload-card .file-info .info-row + .info-row {
+  margin-top: 0.75rem;
+}
+.upload-card .file-info .info-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+.upload-card .file-info .info-value {
+  display: block;
+  color: #1e293b;
+  font-size: 0.9rem;
+  font-weight: 500;
+  word-break: break-all;
+}
+.upload-card .upload-progress {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.upload-card .upload-progress .progress-track {
+  flex: 1;
+  height: 12px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.upload-card .upload-progress .progress-bar {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #38bdf8);
+  transition: width 0.2s ease;
+}
+.upload-card .upload-progress .progress-text {
+  min-width: 48px;
+  text-align: right;
+  color: #1e293b;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.upload-card button {
+  width: 100%;
+  padding: 0.75rem;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.upload-card button:disabled {
+  background: #94a3b8;
+}
+.upload-card #status {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
