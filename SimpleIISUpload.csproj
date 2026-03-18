@@ -57,6 +57,7 @@
     <TypeScriptSourceMap>False</TypeScriptSourceMap>
     <TypeScriptMapRoot />
     <TypeScriptSourceRoot />
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
@@ -143,6 +144,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Content\AccessDenied.html" />
     <Content Include="Content\Upload\style.css">
       <DependentUpon>style.scss</DependentUpon>
     </Content>
@@ -151,6 +153,7 @@
     </Content>
     <Content Include="favicon.ico" />
     <Content Include="Global.asax" />
+    <Content Include="Scripts\Upload\script.js" />
     <Content Include="Web.config" />
     <Content Include="Web.Debug.config">
       <DependentUpon>Web.config</DependentUpon>
@@ -171,6 +174,8 @@
     <Content Include="Content\Upload\style.scss" />
     <Content Include=".github\copilot-instructions.md" />
     <None Include=".github\workflows\release.yml" />
+    <Content Include="app_offline.htm.example" />
+    <Content Include="LICENSE" />
     <None Include="Properties\PublishProfiles\FolderProfile.pubxml" />
     <None Include="compilerconfig.json" />
     <None Include="compilerconfig.json.defaults">
@@ -179,6 +184,8 @@
     <None Include="packages.config" />
     <Content Include="Views\Upload\Index.cshtml" />
     <Content Include="tsconfig.json" />
+    <Content Include="Views\Shared\AccessDenied.cshtml" />
+    <Content Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <Service Include="{4A0DDDB5-7A95-4FBF-97CC-616D07737A77}" />

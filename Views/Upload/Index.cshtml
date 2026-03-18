@@ -12,19 +12,25 @@
          data-validate-url="@Url.Action("ValidatePermission", "Upload")"
          data-init-url="@Url.Action("InitializeUpload", "Upload")"
          data-upload-chunk-url="@Url.Action("UploadChunk", "Upload")"
-         data-complete-url="@Url.Action("CompleteUpload", "Upload")">
+         data-complete-url="@Url.Action("CompleteUpload", "Upload")"
+         data-create-folder-url="@Url.Action("CreateFolder", "Upload")"
+         data-clear-session-url="@Url.Action("ClearValidatedUploadSession", "Upload")">
         <h2>📂 檔案上傳</h2>
 
         <div class="drop-zone" id="dropZone">
             <span class="icon">☁️</span>
-            <p>將檔案拖曳至此 或 點擊選取</p>
-            <input type="file" id="fileInput" style="display:none">
+            <p>將檔案或資料夾拖曳至此，或使用下方按鈕選取</p>
+            <div class="picker-actions">
+                <button type="button" id="pickFilesBtn" class="picker-btn">選取檔案</button>
+                <button type="button" id="pickFolderBtn" class="picker-btn">選取資料夾</button>
+            </div>
+            <input type="file" id="fileInput" style="display:none" multiple>
         </div>
 
         <div class="file-info" id="fileInfo">
             <div class="info-row">
-                <span class="info-label">準備上傳檔案</span>
-                <span class="info-value" id="filePath">尚未選取檔案</span>
+                <span class="info-label">準備上傳內容</span>
+                <span class="info-value" id="filePath">尚未選取檔案或資料夾</span>
             </div>
         </div>
 
@@ -35,9 +41,27 @@
             <span class="progress-text" id="uploadProgressText">0%</span>
         </div>
 
+        <div class="upload-results" id="uploadResults" hidden>
+            <div class="results-header">
+                <span class="info-label">資料夾處理清單</span>
+                <span class="results-summary" id="uploadResultsSummary"></span>
+            </div>
+            <ul class="results-list" id="uploadResultsList"></ul>
+        </div>
+
         <div class="controls">
-            <label>上傳密碼：</label>
-            <input type="password" id="pwd" placeholder="請輸入密碼">
+            <label for="pwd">上傳密碼：</label>
+            <div class="password-input-group">
+                <input type="password" id="pwd" placeholder="請輸入密碼">
+                <button type="button" id="togglePwdBtn" class="toggle-password" aria-label="顯示密碼" aria-pressed="false" title="顯示密碼">
+                    <svg class="toggle-password-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path class="eye-outline" d="M1.5 12s3.8-6 10.5-6 10.5 6 10.5 6-3.8 6-10.5 6S1.5 12 1.5 12Z" />
+                        <circle class="eye-pupil" cx="12" cy="12" r="3" />
+                        <path class="eye-slash" d="M4 20 20 4" />
+                    </svg>
+                    <span class="sr-only" id="togglePwdText">顯示密碼</span>
+                </button>
+            </div>
 
             <div class="modes">
                 <label><input type="radio" name="mode" value="prohibit" checked> 禁止重複</label>
@@ -45,7 +69,7 @@
                 <label><input type="radio" name="mode" value="auto"> 自動編號</label>
             </div>
 
-            <button id="uploadBtn">確認上傳</button>
+            <button id="uploadBtn" class="submit-btn">請先選取檔案或資料夾</button>
         </div>
 
         <p id="status"></p>

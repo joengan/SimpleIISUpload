@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>網站暫停服務 - 系統維護中</title>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
+            background-color: #f4f7f9;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 3rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            max-width: 500px;
+            width: 90%;
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            color: #ff9800;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        p {
+            line-height: 1.6;
+            color: #666;
+            margin-bottom: 2rem;
+        }
+        .contact-box {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            font-size: 0.95rem;
+        }
+        .footer {
+            margin-top: 2rem;
+            font-size: 0.85rem;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🚧</div>
+        <h1>網站目前不提供服務</h1>
+        <p>感謝您的訪問。本站目前處於非對外開放狀態或正在進行系統維護，暫時無法提供服務。</p>
+        
+        <div class="contact-box">
+            如有緊急需求或相關疑問，<br>
+            <strong>請聯絡網站管理員</strong> 以取得進一步協助。
+        </div>
+
+        <div class="footer">
+            © 系統管理團隊
+        </div>
+    </div>
+</body>
+</html>
