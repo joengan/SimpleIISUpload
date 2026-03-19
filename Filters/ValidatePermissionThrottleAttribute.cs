@@ -477,19 +477,22 @@ namespace SimpleIISUpload.Filters
                     .Where(ip => ip != null),
                 StringComparer.OrdinalIgnoreCase);
 
-            string[] requestClientIps = UploadRequestThrottle.GetClientIpAddresses(request)
-                .Select(TryNormalizeIpAddress)
-                .Where(ip => ip != null)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            string requestClientIp = GetMostReliableClientIp(request);
+            string normalizedRequestIp = TryNormalizeIpAddress(requestClientIp);
 
-            if (requestClientIps.Any(clientIp => allowedClientIps.Contains(clientIp)))
+            if (normalizedRequestIp != null && allowedClientIps.Contains(normalizedRequestIp))
             {
                 return true;
             }
 
             LogDeniedRequest(request, configuredEntries.Length, allowedClientIps.Count);
             return false;
+        }
+
+        private static string GetMostReliableClientIp(HttpRequestBase request)
+        {
+            string userHostAddress = request.UserHostAddress;
+            return !string.IsNullOrWhiteSpace(userHostAddress) ? userHostAddress.Trim() : string.Empty;
         }
 
         private static string[] GetConfiguredAllowedClientIpEntries()
@@ -522,10 +525,9 @@ namespace SimpleIISUpload.Filters
 
         private static void LogDeniedRequest(HttpRequestBase request, int configuredEntryCount, int validConfiguredEntryCount)
         {
-            string[] clientIps = UploadRequestThrottle.GetClientIpAddresses(request);
-            string logKey = AllowedClientIpLogCacheKeyPrefix + string.Join("|", clientIps
-                .Select(ip => string.IsNullOrWhiteSpace(ip) ? "unknown" : ip.Trim())
-                .OrderBy(ip => ip, StringComparer.OrdinalIgnoreCase));
+            string clientIp = GetMostReliableClientIp(request);
+            string normalizedIp = string.IsNullOrWhiteSpace(clientIp) ? "unknown" : clientIp.Trim();
+            string logKey = AllowedClientIpLogCacheKeyPrefix + normalizedIp;
 
             if (HttpRuntime.Cache.Get(logKey) != null)
             {
@@ -545,7 +547,8 @@ namespace SimpleIISUpload.Filters
                 {
                     { "ConfiguredEntryCount", configuredEntryCount.ToString() },
                     { "ValidConfiguredEntryCount", validConfiguredEntryCount.ToString() },
-                    { "LogThrottleMinutes", AccessDeniedLogThrottleDuration.TotalMinutes.ToString("0") }
+                    { "LogThrottleMinutes", AccessDeniedLogThrottleDuration.TotalMinutes.ToString("0") },
+                    { "CheckedIpSource", "UserHostAddress" }
                 });
         }
     }
