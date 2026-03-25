@@ -17,10 +17,13 @@ namespace SimpleIISUpload.Controllers
         private const string UploadPermissionSessionKey = "UploadPermission";
         private const string UploadPasswordSessionKey = "UploadPassword";
         private const string UploadKindSessionKey = "UploadKind";
+        private const string UploadParallelThreadsSessionKey = "UploadParallelThreads";
         private const string UploadStateFileSuffix = ".upload.json";
         private const string UploadTempFileSuffix = ".upload.tmp";
         private const long DefaultMaxUploadFileBytes = 8L * 1024 * 1024 * 1024;
         private const int DefaultChunkSizeBytes = 8 * 1024 * 1024;
+        private const int DefaultAllowedMaxUploadThreads = 16;
+        private const int DefaultDefaultMaxUploadThreads = 8;
         private static readonly TimeSpan UploadSessionRetention = TimeSpan.FromHours(1);
 
         private enum UploadPermission
@@ -60,11 +63,16 @@ namespace SimpleIISUpload.Controllers
         }
 
         [HttpGet]
-        public ActionResult Index() => View();
+        public ActionResult Index()
+        {
+            ViewBag.AllowedMaxUploadThreads = GetConfiguredAllowedMaxUploadThreads();
+            ViewBag.DefaultMaxUploadThreads = GetConfiguredDefaultMaxUploadThreads();
+            return View();
+        }
 
         [HttpPost]
         [ValidatePermissionThrottle]
-        public ActionResult ValidatePermission(string pwd, string mode, string uploadKind)
+        public ActionResult ValidatePermission(string pwd, string mode, string uploadKind, int? parallelThreads)
         {
             UploadSelectionKind selectionKind;
             if (!TryParseUploadKind(uploadKind, out selectionKind))
@@ -82,9 +90,19 @@ namespace SimpleIISUpload.Controllers
                 return Content(validation.Message);
             }
 
+            int validatedParallelThreads;
+            string threadValidationMessage;
+            if (!TryValidateParallelThreads(parallelThreads, selectionKind, out validatedParallelThreads, out threadValidationMessage))
+            {
+                ClearUploadValidation();
+                SetResponseStatus((int)HttpStatusCode.BadRequest);
+                return Content(threadValidationMessage);
+            }
+
             Session[UploadPermissionSessionKey] = validation.Permission.ToString();
             Session[UploadPasswordSessionKey] = pwd;
             Session[UploadKindSessionKey] = GetUploadKindValue(selectionKind);
+            Session[UploadParallelThreadsSessionKey] = validatedParallelThreads;
             return Content("OK");
         }
 
@@ -682,9 +700,43 @@ namespace SimpleIISUpload.Controllers
             return mode != "overwrite" || permission == UploadPermission.Overwrite;
         }
 
+        private bool TryValidateParallelThreads(int? parallelThreads, UploadSelectionKind uploadKind, out int validatedParallelThreads, out string errorMessage)
+        {
+            validatedParallelThreads = 1;
+            errorMessage = null;
+
+            if (uploadKind != UploadSelectionKind.Folder)
+            {
+                return true;
+            }
+
+            int allowedMaxUploadThreads = GetConfiguredAllowedMaxUploadThreads();
+            int requestedParallelThreads = parallelThreads ?? GetConfiguredDefaultMaxUploadThreads();
+            if (requestedParallelThreads < 1 || requestedParallelThreads > allowedMaxUploadThreads)
+            {
+                errorMessage = string.Format("❌ 線程數必須介於 1 到 {0} 之間", allowedMaxUploadThreads);
+                return false;
+            }
+
+            validatedParallelThreads = requestedParallelThreads;
+            return true;
+        }
+
         private long GetConfiguredMaxUploadFileBytes()
         {
             return GetConfiguredLong("MaxUploadFileBytes", DefaultMaxUploadFileBytes);
+        }
+
+        private int GetConfiguredAllowedMaxUploadThreads()
+        {
+            return GetConfiguredInt("AllowedMaxUploadThreads", DefaultAllowedMaxUploadThreads);
+        }
+
+        private int GetConfiguredDefaultMaxUploadThreads()
+        {
+            int allowedMaxUploadThreads = GetConfiguredAllowedMaxUploadThreads();
+            int configuredDefault = GetConfiguredInt("DefaultMaxUploadThreads", DefaultDefaultMaxUploadThreads);
+            return Math.Max(1, Math.Min(configuredDefault, allowedMaxUploadThreads));
         }
 
         private int GetConfiguredChunkSizeBytes()
@@ -696,6 +748,14 @@ namespace SimpleIISUpload.Controllers
             }
 
             return (int)configured;
+        }
+
+        private int GetConfiguredInt(string key, int defaultValue)
+        {
+            int value;
+            return int.TryParse(ConfigurationManager.AppSettings[key], out value) && value > 0
+                ? value
+                : defaultValue;
         }
 
         private long GetConfiguredLong(string key, long defaultValue)
@@ -1126,6 +1186,7 @@ namespace SimpleIISUpload.Controllers
             Session.Remove(UploadPermissionSessionKey);
             Session.Remove(UploadPasswordSessionKey);
             Session.Remove(UploadKindSessionKey);
+            Session.Remove(UploadParallelThreadsSessionKey);
         }
 
         private void SetResponseStatus(int statusCode)

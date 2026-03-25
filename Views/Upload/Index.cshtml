@@ -1,4 +1,8 @@
-﻿@{ Layout = null; }
+﻿@{
+    Layout = null;
+    int allowedMaxUploadThreads = ViewBag.AllowedMaxUploadThreads == null ? 16 : (int)ViewBag.AllowedMaxUploadThreads;
+    int defaultMaxUploadThreads = ViewBag.DefaultMaxUploadThreads == null ? 8 : (int)ViewBag.DefaultMaxUploadThreads;
+}
 <!DOCTYPE html>
 <html>
 <head>
@@ -14,7 +18,9 @@
          data-upload-chunk-url="@Url.Action("UploadChunk", "Upload")"
          data-complete-url="@Url.Action("CompleteUpload", "Upload")"
          data-create-folder-url="@Url.Action("CreateFolder", "Upload")"
-         data-clear-session-url="@Url.Action("ClearValidatedUploadSession", "Upload")">
+         data-clear-session-url="@Url.Action("ClearValidatedUploadSession", "Upload")"
+         data-allowed-max-upload-threads="@allowedMaxUploadThreads"
+         data-default-max-upload-threads="@defaultMaxUploadThreads">
         <h2>📂 檔案上傳</h2>
 
         <div class="drop-zone" id="dropZone">
@@ -68,6 +74,15 @@
                 <label><input type="radio" name="mode" value="overwrite"> 覆蓋</label>
                 <label><input type="radio" name="mode" value="auto"> 自動編號</label>
             </div>
+
+            <details class="folder-thread-settings" id="folderThreadSettings">
+                <summary>資料夾多線程設定</summary>
+                <div class="folder-thread-settings-body">
+                    <label for="folderThreadCount">同時上傳線程數</label>
+                    <input type="number" id="folderThreadCount" step="1" min="1" max="@allowedMaxUploadThreads" value="@defaultMaxUploadThreads" inputmode="numeric">
+                    <p class="folder-thread-settings-hint" id="folderThreadHint">可設定 1 ~ @allowedMaxUploadThreads，預設 @defaultMaxUploadThreads。</p>
+                </div>
+            </details>
 
             <button id="uploadBtn" class="submit-btn">請先選取檔案或資料夾</button>
         </div>

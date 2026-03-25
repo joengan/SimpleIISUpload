@@ -27,6 +27,7 @@ type SelectedUploadItem = {
     displayPath: string;
     uploadId: string;
     uploadedBytes: number;
+    progressBytes: number;
     isCompleted: boolean;
 };
 type UploadSelection = {
@@ -78,6 +79,9 @@ new class {
     private togglePwdBtn = document.getElementById('togglePwdBtn') as HTMLButtonElement;
     private togglePwdText = document.getElementById('togglePwdText') as HTMLSpanElement;
     private modeInputs = Array.from(document.querySelectorAll('input[name="mode"]')) as HTMLInputElement[];
+    private folderThreadSettings = document.getElementById('folderThreadSettings') as HTMLDetailsElement;
+    private folderThreadInput = document.getElementById('folderThreadCount') as HTMLInputElement;
+    private folderThreadHint = document.getElementById('folderThreadHint') as HTMLParagraphElement;
     private btn = document.getElementById('uploadBtn') as HTMLButtonElement;
     private readonly initialFilePathText = this.filePathBox.innerText;
     private readonly initialStatusText = this.statusBox.innerText;
@@ -85,10 +89,13 @@ new class {
     private readonly emptyFileButtonText = this.btn.innerText;
     private readonly readyButtonText = "確認上傳";
     private readonly resumeButtonText = "繼續上傳";
+    private allowedMaxUploadThreads = 16;
+    private defaultMaxUploadThreads = 8;
     private pickerKind: UploadKind = 'file';
     private isPasswordVisible = false;
 
     constructor() {
+        this.initializeFolderThreadSettings();
         this.initEvents();
         this.updatePasswordVisibility();
         this.refreshSubmitButton();
@@ -118,6 +125,8 @@ new class {
         this.fileInput.onchange = (e) => this.handlePickerSelect(e);
         this.togglePwdBtn.addEventListener('mousedown', (e) => e.preventDefault());
         this.togglePwdBtn.addEventListener('click', () => this.togglePasswordVisibility());
+        this.folderThreadInput.addEventListener('change', () => this.normalizeFolderThreadInput());
+        this.folderThreadInput.addEventListener('blur', () => this.normalizeFolderThreadInput());
         this.pwdInput.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter' || this.btn.disabled) {
                 return;
@@ -197,8 +206,41 @@ new class {
         this.pwdInput.disabled = isUploading;
         this.togglePwdBtn.disabled = isUploading;
         this.modeInputs.forEach(input => input.disabled = isUploading);
+        this.folderThreadInput.disabled = isUploading;
+        this.folderThreadSettings.classList.toggle('is-disabled', isUploading);
+        this.folderThreadSettings.setAttribute('aria-disabled', `${isUploading}`);
         this.dropZone.classList.toggle('is-disabled', isUploading);
         this.dropZone.setAttribute('aria-disabled', `${isUploading}`);
+    }
+
+    private initializeFolderThreadSettings() {
+        this.allowedMaxUploadThreads = Math.max(1, this.parsePositiveInteger(this.uploadCard.dataset.allowedMaxUploadThreads, 16));
+        this.defaultMaxUploadThreads = Math.min(
+            this.allowedMaxUploadThreads,
+            Math.max(1, this.parsePositiveInteger(this.uploadCard.dataset.defaultMaxUploadThreads, 8)));
+
+        this.folderThreadInput.step = '1';
+        this.folderThreadInput.min = '1';
+        this.folderThreadInput.max = `${this.allowedMaxUploadThreads}`;
+        this.folderThreadInput.value = `${this.defaultMaxUploadThreads}`;
+        this.folderThreadHint.innerText = `可設定 1 ~ ${this.allowedMaxUploadThreads}，預設 ${this.defaultMaxUploadThreads}。`;
+    }
+
+    private parsePositiveInteger(value: string | undefined, fallbackValue: number) {
+        const parsedValue = Number(value);
+        return Number.isFinite(parsedValue) && parsedValue > 0
+            ? Math.round(parsedValue)
+            : fallbackValue;
+    }
+
+    private normalizeFolderThreadInput() {
+        this.folderThreadInput.value = `${this.getFolderParallelThreads()}`;
+    }
+
+    private getFolderParallelThreads() {
+        const rawValue = Number(this.folderThreadInput.value);
+        const normalizedValue = Number.isFinite(rawValue) ? Math.round(rawValue) : this.defaultMaxUploadThreads;
+        return Math.min(this.allowedMaxUploadThreads, Math.max(1, normalizedValue));
     }
 
     private togglePasswordVisibility() {
@@ -438,6 +480,7 @@ new class {
             displayPath: normalizedRelativePath,
             uploadId: this.createUploadId(file, normalizedRelativePath),
             uploadedBytes: 0,
+            progressBytes: 0,
             isCompleted: false
         };
     }
@@ -451,6 +494,7 @@ new class {
             displayPath: normalizedRelativePath,
             uploadId: this.createUploadId(null, normalizedRelativePath),
             uploadedBytes: 0,
+            progressBytes: 0,
             isCompleted: false
         };
     }
@@ -652,11 +696,12 @@ new class {
         return (document.querySelector('input[name="mode"]:checked') as HTMLInputElement).value as ConflictMode;
     }
 
-    private async validatePermission(pwd: string, mode: ConflictMode, uploadKind: UploadKind) {
+    private async validatePermission(pwd: string, mode: ConflictMode, uploadKind: UploadKind, parallelThreads: number) {
         const formData = new FormData();
         formData.append("pwd", pwd);
         formData.append("mode", mode);
         formData.append("uploadKind", uploadKind);
+        formData.append("parallelThreads", `${parallelThreads}`);
 
         const response = await fetch(this.validateUrl, {
             method: 'POST',
@@ -818,19 +863,12 @@ new class {
 
     private async uploadChunkWithRetry(
         createFormData: () => FormData,
-        uploadedBytesBeforeBatch: number,
-        uploadedBytesBeforeChunk: number,
-        totalBatchBytes: number,
-        fileLabel: string,
-        fileIndex: number,
-        totalFiles: number) {
+        onProgress: (loadedBytes: number) => void,
+        fileLabel: string) {
         let attempt = 0;
         while (true) {
             try {
-                return await this.uploadChunk(createFormData(), (loadedBytes) => {
-                    const currentUploadedBytes = uploadedBytesBeforeBatch + uploadedBytesBeforeChunk + loadedBytes;
-                    this.updateBatchProgress(currentUploadedBytes, totalBatchBytes, fileLabel, fileIndex, totalFiles);
-                });
+                return await this.uploadChunk(createFormData(), onProgress);
             } catch (error) {
                 const requestError = error as RequestError;
                 const shouldRetry = attempt < this.chunkRetryCount - 1 && this.isRetryableChunkError(requestError);
@@ -853,7 +891,7 @@ new class {
         return new Promise<void>(resolve => window.setTimeout(resolve, durationMs));
     }
 
-    private async uploadFileByChunks(item: SelectedUploadItem, session: UploadSession, pwd: string, mode: ConflictMode, uploadKind: UploadKind, uploadedBytesBeforeBatch: number, totalBatchBytes: number, fileIndex: number, totalFiles: number) {
+    private async uploadFileByChunks(item: SelectedUploadItem, session: UploadSession, pwd: string, mode: ConflictMode, uploadKind: UploadKind, items: SelectedUploadItem[], totalBatchBytes: number, fileIndex: number, totalFiles: number) {
         if (!item.file) {
             throw this.createRequestError("❌ 缺少檔案內容");
         }
@@ -863,43 +901,156 @@ new class {
         const totalChunks = Math.max(1, Math.ceil(totalBytes / session.chunkSize));
         let uploadedBytes = Math.max(0, Math.min(session.uploadedBytes, totalBytes));
 
-        this.updateBatchProgress(uploadedBytesBeforeBatch + uploadedBytes, totalBatchBytes, item.displayPath, fileIndex, totalFiles);
+        item.uploadedBytes = uploadedBytes;
+        item.progressBytes = uploadedBytes;
+        this.updateBatchProgress(items, totalBatchBytes, item.displayPath, fileIndex, totalFiles);
 
         while (uploadedBytes < totalBytes) {
-            const chunkIndex = Math.floor(uploadedBytes / session.chunkSize);
-            const chunkEnd = Math.min(uploadedBytes + session.chunkSize, totalBytes);
+            const chunkStart = uploadedBytes;
+            const chunkIndex = Math.floor(chunkStart / session.chunkSize);
+            const chunkEnd = Math.min(chunkStart + session.chunkSize, totalBytes);
 
             const result = await this.uploadChunkWithRetry(() => {
                 const formData = new FormData();
                 formData.append("uploadId", session.uploadId);
                 formData.append("chunkIndex", `${chunkIndex}`);
                 formData.append("totalChunks", `${totalChunks}`);
-                formData.append("chunkStart", `${uploadedBytes}`);
+                formData.append("chunkStart", `${chunkStart}`);
                 formData.append("pwd", pwd);
                 formData.append("mode", mode);
                 formData.append("uploadKind", uploadKind);
-                formData.append("chunk", file.slice(uploadedBytes, chunkEnd), file.name);
+                formData.append("chunk", file.slice(chunkStart, chunkEnd), file.name);
                 return formData;
-            }, uploadedBytesBeforeBatch, uploadedBytes, totalBatchBytes, item.displayPath, fileIndex, totalFiles);
+            }, (loadedBytes) => {
+                item.progressBytes = Math.max(item.uploadedBytes, Math.min(chunkStart + loadedBytes, totalBytes));
+                this.updateBatchProgress(items, totalBatchBytes, item.displayPath, fileIndex, totalFiles);
+            }, item.displayPath);
 
             uploadedBytes = Math.max(uploadedBytes, result.uploadedBytes);
             item.uploadedBytes = uploadedBytes;
-            this.updateBatchProgress(uploadedBytesBeforeBatch + uploadedBytes, totalBatchBytes, item.displayPath, fileIndex, totalFiles);
+            item.progressBytes = uploadedBytes;
+            this.updateBatchProgress(items, totalBatchBytes, item.displayPath, fileIndex, totalFiles);
         }
     }
 
-    private updateBatchProgress(uploadedBytes: number, totalBytes: number, fileLabel: string, fileIndex: number, totalFiles: number) {
-        const percent = totalBytes > 0 ? this.getProgressPercent(uploadedBytes, totalBytes) : 0;
+    private updateBatchProgress(items: SelectedUploadItem[], totalBytes: number, fileLabel: string, fileIndex: number, totalFiles: number, statusPrefix = "上傳中") {
+        const percent = totalBytes > 0
+            ? this.getProgressPercent(this.getUploadedProgressBytes(items), totalBytes)
+            : this.getProgressPercent(this.getCompletedItemCount(items), totalFiles);
         this.setProgress(percent, true);
-        this.setStatus(`上傳中 (${fileIndex}/${totalFiles}) ${fileLabel} · ${Math.round(percent)}%`);
+        this.setStatus(`${statusPrefix} (${fileIndex}/${totalFiles}) ${fileLabel} · ${Math.round(percent)}%`);
     }
 
     private getTotalBytes(items: SelectedUploadItem[]) {
         return items.reduce((sum, item) => sum + (item.file ? item.file.size : 0), 0);
     }
 
-    private getCompletedBytes(items: SelectedUploadItem[]) {
-        return items.reduce((sum, item) => sum + (item.isCompleted && item.file ? item.file.size : 0), 0);
+    private getUploadedProgressBytes(items: SelectedUploadItem[]) {
+        return items.reduce((sum, item) => sum + (item.file ? Math.max(0, Math.min(item.progressBytes, item.file.size)) : 0), 0);
+    }
+
+    private getCompletedItemCount(items: SelectedUploadItem[]) {
+        return items.filter(item => item.isCompleted).length;
+    }
+
+    private markItemCompleted(item: SelectedUploadItem) {
+        item.isCompleted = true;
+        const completedBytes = item.file ? item.file.size : 0;
+        item.uploadedBytes = completedBytes;
+        item.progressBytes = completedBytes;
+    }
+
+    private async processUploadItem(item: SelectedUploadItem, items: SelectedUploadItem[], pwd: string, mode: ConflictMode, uploadKind: UploadKind, totalBytes: number, itemIndex: number, totalFiles: number) {
+        if (item.isCompleted) {
+            return null;
+        }
+
+        if (item.itemType === 'emptyFolder') {
+            this.setStatus(`建立資料夾 (${itemIndex + 1}/${totalFiles}) ${item.displayPath}`);
+
+            try {
+                const folderResult = await this.createFolder(item.relativePath, pwd, mode, uploadKind);
+                this.markItemCompleted(item);
+                this.updateBatchProgress(items, totalBytes, item.displayPath, itemIndex + 1, totalFiles, "已完成");
+                return this.createFolderResultItem(item, folderResult);
+            } catch (error) {
+                const requestError = error as RequestError;
+                if (uploadKind === 'folder' && this.isSkippableFolderConflict(requestError, mode)) {
+                    this.markItemCompleted(item);
+                    this.updateBatchProgress(items, totalBytes, item.displayPath, itemIndex + 1, totalFiles, "已略過");
+                    return this.createSkippedConflictResult(item, requestError);
+                }
+
+                throw error;
+            }
+        }
+
+        try {
+            const session = await this.initializeUpload(item, pwd, mode, uploadKind);
+            item.uploadedBytes = session.uploadedBytes;
+            item.progressBytes = session.uploadedBytes;
+            this.updateBatchProgress(items, totalBytes, item.displayPath, itemIndex + 1, totalFiles, session.isResuming && session.uploadedBytes > 0 ? "續傳中" : "準備上傳");
+
+            await this.uploadFileByChunks(item, session, pwd, mode, uploadKind, items, totalBytes, itemIndex + 1, totalFiles);
+            const completeResult = await this.completeUpload(session.uploadId, pwd, mode, uploadKind);
+            this.markItemCompleted(item);
+            this.updateBatchProgress(items, totalBytes, item.displayPath, itemIndex + 1, totalFiles, "已完成");
+            return this.createCompletedFileResult(item, completeResult);
+        } catch (error) {
+            const requestError = error as RequestError;
+            if (uploadKind === 'folder' && this.isSkippableFolderConflict(requestError, mode)) {
+                this.markItemCompleted(item);
+                this.updateBatchProgress(items, totalBytes, item.displayPath, itemIndex + 1, totalFiles, "已略過");
+                return this.createSkippedConflictResult(item, requestError);
+            }
+
+            throw error;
+        }
+    }
+
+    private async uploadFolderItemsInParallel(items: SelectedUploadItem[], pwd: string, mode: ConflictMode, uploadKind: UploadKind, parallelThreads: number, totalBytes: number, totalFiles: number) {
+        const folderResults: Array<FolderUploadResult | null> = new Array(items.length);
+        let nextIndex = 0;
+        let firstError: RequestError | null = null;
+
+        const getNextIndex = () => {
+            while (nextIndex < items.length && items[nextIndex].isCompleted) {
+                nextIndex += 1;
+            }
+
+            if (nextIndex >= items.length) {
+                return -1;
+            }
+
+            const currentIndex = nextIndex;
+            nextIndex += 1;
+            return currentIndex;
+        };
+
+        const worker = async () => {
+            while (!firstError) {
+                const currentIndex = getNextIndex();
+                if (currentIndex < 0) {
+                    return;
+                }
+
+                try {
+                    folderResults[currentIndex] = await this.processUploadItem(items[currentIndex], items, pwd, mode, uploadKind, totalBytes, currentIndex, totalFiles);
+                } catch (error) {
+                    firstError = error as RequestError;
+                    return;
+                }
+            }
+        };
+
+        const workerCount = Math.max(1, Math.min(parallelThreads, items.length));
+        await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+        if (firstError) {
+            throw firstError;
+        }
+
+        return folderResults.filter((result): result is FolderUploadResult => result !== null);
     }
 
     private async upload() {
@@ -917,7 +1068,8 @@ new class {
         const uploadKind = this.selection.kind;
         const totalFiles = this.selection.items.length;
         const totalBytes = this.getTotalBytes(this.selection.items);
-        const folderResults: FolderUploadResult[] = [];
+        const parallelThreads = uploadKind === 'folder' ? this.getFolderParallelThreads() : 1;
+        let folderResults: FolderUploadResult[] = [];
         let hasValidatedSession = false;
 
         this.setUploadingState(true);
@@ -926,7 +1078,7 @@ new class {
         this.setStatus("驗證中...");
 
         try {
-            const validation = await this.validatePermission(pwd, mode, uploadKind);
+            const validation = await this.validatePermission(pwd, mode, uploadKind, parallelThreads);
             if (!validation.response.ok) {
                 if (validation.response.status === 429) {
                     this.startLockout(this.validatePermissionLockoutMs);
@@ -938,88 +1090,12 @@ new class {
             }
 
             hasValidatedSession = true;
-            let completedBytes = this.getCompletedBytes(this.selection.items);
-            let completedCount = this.selection.items.filter(item => item.isCompleted).length;
-
-            for (let index = 0; index < this.selection.items.length; index++) {
-                const item = this.selection.items[index];
-                if (item.isCompleted) {
-                    continue;
-                }
-
-                if (item.itemType === 'emptyFolder') {
-                    this.setStatus(`建立資料夾 (${index + 1}/${totalFiles}) ${item.displayPath}`);
-                    try {
-                        const folderResult = await this.createFolder(item.relativePath, pwd, mode, uploadKind);
-                        folderResults.push(this.createFolderResultItem(item, folderResult));
-                        item.isCompleted = true;
-                        completedCount += 1;
-
-                        const completedPercent = totalBytes > 0
-                            ? this.getProgressPercent(completedBytes, totalBytes)
-                            : this.getProgressPercent(completedCount, totalFiles);
-                        this.setProgress(completedPercent, true);
-                        if (completedCount < totalFiles) {
-                            this.setStatus(`已完成 ${completedCount}/${totalFiles}：${item.displayPath}`);
-                        }
-                    } catch (error) {
-                        const requestError = error as RequestError;
-                        if (uploadKind === 'folder' && this.isSkippableFolderConflict(requestError, mode)) {
-                            folderResults.push(this.createSkippedConflictResult(item, requestError));
-                            item.isCompleted = true;
-                            completedCount += 1;
-                            const completedPercent = totalBytes > 0
-                                ? this.getProgressPercent(completedBytes, totalBytes)
-                                : this.getProgressPercent(completedCount, totalFiles);
-                            this.setProgress(completedPercent, true);
-                            continue;
-                        }
-
-                        throw error;
-                    }
-                    continue;
-                }
-
-                try {
-                    const session = await this.initializeUpload(item, pwd, mode, uploadKind);
-                    item.uploadedBytes = session.uploadedBytes;
-
-                    const startPercent = totalBytes > 0 ? this.getProgressPercent(completedBytes + session.uploadedBytes, totalBytes) : 0;
-                    this.setProgress(startPercent, true);
-                    this.setStatus(session.isResuming && session.uploadedBytes > 0
-                        ? `偵測到中斷續傳 (${index + 1}/${totalFiles}) ${item.displayPath}`
-                        : `準備上傳 (${index + 1}/${totalFiles}) ${item.displayPath}`);
-
-                    await this.uploadFileByChunks(item, session, pwd, mode, uploadKind, completedBytes, totalBytes, index + 1, totalFiles);
-                    const completeResult = await this.completeUpload(session.uploadId, pwd, mode, uploadKind);
-                    folderResults.push(this.createCompletedFileResult(item, completeResult));
-
-                    item.isCompleted = true;
-                    item.uploadedBytes = item.file ? item.file.size : 0;
-                    completedBytes += item.file ? item.file.size : 0;
-                    completedCount += 1;
-
-                    const completedPercent = totalBytes > 0 ? this.getProgressPercent(completedBytes, totalBytes) : 100;
-                    this.setProgress(completedPercent, true);
-                    if (completedCount < totalFiles) {
-                        this.setStatus(`已完成 ${completedCount}/${totalFiles}：${item.displayPath}`);
-                    }
-                } catch (error) {
-                    const requestError = error as RequestError;
-                    if (uploadKind === 'folder' && this.isSkippableFolderConflict(requestError, mode)) {
-                        folderResults.push(this.createSkippedConflictResult(item, requestError));
-                        item.isCompleted = true;
-                        item.uploadedBytes = item.file ? item.file.size : 0;
-                        completedBytes += item.file ? item.file.size : 0;
-                        completedCount += 1;
-
-                        const completedPercent = totalBytes > 0 ? this.getProgressPercent(completedBytes, totalBytes) : this.getProgressPercent(completedCount, totalFiles);
-                        this.setProgress(completedPercent, true);
-                        continue;
-                    }
-
-                    throw error;
-                }
+            if (uploadKind === 'folder') {
+                this.setStatus(`準備啟動 ${parallelThreads} 條線程...`);
+                folderResults = await this.uploadFolderItemsInParallel(this.selection.items, pwd, mode, uploadKind, parallelThreads, totalBytes, totalFiles);
+            } else {
+                const result = await this.processUploadItem(this.selection.items[0], this.selection.items, pwd, mode, uploadKind, totalBytes, 0, totalFiles);
+                folderResults = result ? [result] : [];
             }
 
             this.setProgress(100, true);

@@ -162,6 +162,51 @@ $border-color: #cbd5e1;
                 cursor: pointer;
             }
         }
+
+        .folder-thread-settings {
+            border: 1px solid $border-color;
+            border-radius: 8px;
+            background: $bg-light;
+
+            &.is-disabled {
+                opacity: 0.65;
+                pointer-events: none;
+            }
+
+            summary {
+                padding: 0.75rem 1rem;
+                cursor: pointer;
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: #1e293b;
+            }
+
+            .folder-thread-settings-body {
+                padding: 0 1rem 1rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+
+                label {
+                    font-size: 0.85rem;
+                    color: #475569;
+                }
+
+                input {
+                    width: 100%;
+                    padding: 0.5rem;
+                    border: 1px solid $border-color;
+                    border-radius: 4px;
+                    box-sizing: border-box;
+                }
+            }
+
+            .folder-thread-settings-hint {
+                margin: 0;
+                font-size: 0.8rem;
+                color: #64748b;
+            }
+        }
     }
 
     .sr-only {
